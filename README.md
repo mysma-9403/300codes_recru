@@ -12,8 +12,14 @@ API do zarządzania biblioteką (książki + autorzy) w Laravel 12 z architektur
 make install
 ```
 
-Komenda buduje kontenery, uruchamia migracje i seeduje bazę danymi testowymi.
-Po zakończeniu wyświetlą się dane logowania.
+Komenda automatycznie:
+1. Tworzy `.env` z `.env.example` (jesli nie istnieje)
+2. Buduje i uruchamia kontenery (app, mysql, redis, queue worker)
+3. Generuje APP_KEY
+4. Uruchamia migracje i seeduje baze danymi testowymi
+5. Wyswietla dane logowania
+
+Jesli porty sa zajete, zmien je w `docker-compose.override.yml`.
 
 ### Inne komendy
 
@@ -21,19 +27,22 @@ Po zakończeniu wyświetlą się dane logowania.
 |---------|------|
 | `make up` | Uruchom kontenery |
 | `make down` | Zatrzymaj kontenery |
-| `make fresh` | Zresetuj bazę i seeduj od nowa |
+| `make restart` | Restartuj kontenery |
+| `make fresh` | Zresetuj baze i seeduj od nowa |
 | `make test` | Uruchom testy (Pest) |
 | `make pint` | Formatowanie kodu (Pint) |
 | `make larastan` | Analiza statyczna (Larastan level 6) |
 | `make analyse` | Pint + Larastan |
 | `make shell` | Bash w kontenerze aplikacji |
 | `make tinker` | Laravel Tinker |
-| `make logs` | Logi kontenerów |
+| `make logs` | Logi kontenerow |
 
 ## Uwierzytelnianie (Sanctum)
 
-Endpointy modyfikujące dane (`POST`, `PUT`, `DELETE`) wymagają tokenu Bearer.
-Endpointy odczytujące (`GET`) są publiczne.
+Endpointy modyfikujace dane (`POST`, `PUT`, `DELETE /books`) wymagaja tokenu Bearer.
+Endpointy odczytujace (`GET`) sa publiczne.
+
+Wszystkie odpowiedzi API sa w formacie JSON (middleware `ForceJsonResponse`).
 
 ### Jak uzyskac token?
 
@@ -83,6 +92,8 @@ Bazowy URL: `http://localhost:8000/api`
 }
 ```
 
+Tytuly ksiazek sa automatycznie normalizowane (np. `harry potter` -> `Harry Potter`).
+
 ### Autorzy
 
 | Metoda | Endpoint | Opis | Autoryzacja |
@@ -96,6 +107,8 @@ Wyszukiwanie autorow, ktorzy maja ksiazki zawierajace dany ciag znakow w tytule:
 ```
 GET /api/authors?search=potter
 ```
+
+System filtrow jest rozszerzalny — dodanie nowego filtra wymaga jedynie stworzenia klasy implementujacej `FilterInterface` i zarejestrowania jej w `AuthorFilterPipeline`.
 
 ### Logowanie
 
@@ -111,6 +124,21 @@ make shell
 php artisan author:create
 ```
 
+## Testy
+
+```bash
+make test
+```
+
+Projekt zawiera 23 testy (105 asercji):
+
+- **Feature/Book/** — testy jednostkowe POST i DELETE ksiazek (walidacja, autoryzacja, dispatch joba)
+- **Feature/E2E/** — testy end-to-end:
+  - `BookFlowTest` — pelny cykl CRUD ksiazki z tokenem Sanctum, paginacja
+  - `AuthorFlowTest` — lista, szczegoly, filtr search, 404
+  - `AuthorizationFlowTest` — publiczne vs chronione endpointy, nieprawidlowy token
+  - `LastBookTitleJobTest` — aktualizacja `last_added_book_title` u autorow
+
 ## Architektura
 
 Projekt wykorzystuje Domain-Driven Design (DDD):
@@ -118,7 +146,10 @@ Projekt wykorzystuje Domain-Driven Design (DDD):
 ```
 app/
 ├── Application/          # Warstwa aplikacji (Laravel)
-│   ├── Auth/Controllers/
+│   ├── Auth/
+│   │   ├── Controllers/
+│   │   ├── Requests/
+│   │   └── Services/
 │   ├── Author/
 │   │   ├── Controllers/
 │   │   └── Resources/
@@ -139,9 +170,12 @@ app/
 │   │   ├── Factories/
 │   │   ├── Models/
 │   │   └── Services/
-│   └── Shared/
-│       └── Filters/
-└── Console/Commands/
+│   ├── Shared/
+│   │   └── Filters/
+│   └── User/
+│       └── Services/
+├── Console/Commands/
+└── Http/Middleware/
 ```
 
 ## Stack technologiczny
@@ -150,21 +184,5 @@ app/
 - MySQL 8.0
 - Redis (kolejki + cache)
 - Docker + Docker Compose
-- Pest (testy), Pint (formatowanie), Larastan (analiza statyczna)
+- Pest (testy), Pint (formatowanie), Larastan level 6 (analiza statyczna)
 - Sanctum (uwierzytelnianie API)
-
-## Zrealizowane funkcjonalnosci
-
-### Wymagane
-- [x] Modele Book i Author z relacja wiele-do-wielu
-- [x] CRUD dla ksiazek (z informacjami o autorach)
-- [x] Lista i szczegoly autorow (z informacjami o ksiazkach)
-- [x] Walidacja danych wejsciowych
-- [x] Paginacja wynikow
-- [x] Job kolejkowy aktualizujacy `last_added_book_title` u autorow
-- [x] Testy dla `POST /api/books` oraz `DELETE /api/books/{id}`
-
-### Dodatkowe
-- [x] Sanctum - uwierzytelnianie dla endpointow modyfikujacych
-- [x] Filtr `GET /api/authors?search={query}` - wyszukiwanie po tytulach ksiazek
-- [x] Komenda Artisan `author:create` - interaktywne tworzenie autora
